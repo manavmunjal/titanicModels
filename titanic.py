@@ -62,7 +62,6 @@ X_test = X_test.drop(columns=['Fare'])
 print("Applied log1p-scaling to 'Fare' column to reduce skewness.")
 
 # b. Encode categorical variables (One-hot encoding)
-# Temporarily combine to ensure dummy columns match perfectly between train and test splits
 X_train['is_train'] = 1
 X_test['is_train'] = 0
 combined = pd.concat([X_train, X_test])
@@ -74,7 +73,6 @@ print("Applied One-Hot Encoding to 'Sex' and 'Embarked'.")
 
 # a. Apply transformations (Standardization)
 scaler = StandardScaler()
-# Fit strictly on X_train to prevent test data leakage
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 print("Standardized numerical features using StandardScaler.")
@@ -101,7 +99,7 @@ def evaluate_model(name, y_true, y_pred, y_prob):
     print(f"AUC: {roc_auc:.4f}")
     return acc
 
-# a. Naive Bayes with Laplace Smoothing
+# Training Models
 nb_alpha_1 = BernoulliNB(alpha=1.0)
 nb_alpha_1.fit(X_train_scaled, y_train)
 prob_nb_1 = nb_alpha_1.predict_proba(X_test_scaled)[:, 1]
@@ -114,21 +112,18 @@ prob_nb_01 = nb_alpha_01.predict_proba(X_test_scaled)[:, 1]
 pred_nb_01 = nb_alpha_01.predict(X_test_scaled)
 evaluate_model("BernoulliNB (alpha=0.01)", y_test, pred_nb_01, prob_nb_01)
 
-# b. Linear Regression (Threshold = 0.5)
 lr = LinearRegression()
 lr.fit(X_train_scaled, y_train)
 prob_lr = lr.predict(X_test_scaled)
 pred_lr = (prob_lr >= 0.5).astype(int)
 evaluate_model("Linear Regression", y_test, pred_lr, prob_lr)
 
-# b.ii.1 Ridge Regression (L2)
 ridge = Ridge(alpha=1.0)
 ridge.fit(X_train_scaled, y_train)
 prob_ridge = ridge.predict(X_test_scaled)
 pred_ridge = (prob_ridge >= 0.5).astype(int)
 evaluate_model("Ridge Regression (L2)", y_test, pred_ridge, prob_ridge)
 
-# b.ii.2 LASSO Regression (L1)
 lasso = Lasso(alpha=0.01)
 lasso.fit(X_train_scaled, y_train)
 prob_lasso = lasso.predict(X_test_scaled)
@@ -136,38 +131,43 @@ pred_lasso = (prob_lasso >= 0.5).astype(int)
 evaluate_model("LASSO Regression (L1)", y_test, pred_lasso, prob_lasso)
 
 print("\n--- Visualizations ---")
-fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-axes = axes.flatten()
-
 models_to_plot = [
     "BernoulliNB (alpha=1.0)", "BernoulliNB (alpha=0.01)", 
     "Linear Regression", "Ridge Regression (L2)", "LASSO Regression (L1)"
 ]
 
-# Plot Confusion Matrices
+# 1. Confusion Matrices Plot
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+axes = axes.flatten()
 for i, name in enumerate(models_to_plot):
     sns.heatmap(results[name]['CM'], annot=True, fmt='d', cmap='Blues', ax=axes[i])
     axes[i].set_title(f"{name}\nConfusion Matrix")
     axes[i].set_xlabel("Predicted Label")
     axes[i].set_ylabel("True Label")
-
 axes[-1].axis('off')
 plt.tight_layout()
 plt.savefig('confusion_matrices_split.png')
+plt.show()
 
-# Plot ROC Curves
-plt.figure(figsize=(10, 8))
+# 2. Individual ROC Curves
 for name in models_to_plot:
+    plt.figure(figsize=(8, 6))
     fpr, tpr, roc_auc = fpr_tpr_auc[name]
-    plt.plot(fpr, tpr, lw=2, label=f'{name} (AUC = {roc_auc:.3f})')
-
-plt.plot([0, 1], [0, 1], color='gray', lw=2, linestyle='--')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('ROC Curves on Split Test Data')
-plt.legend(loc="lower right")
-plt.grid(alpha=0.3)
-plt.savefig('roc_curves_split.png')
-print("Saved visualization plots as 'confusion_matrices_split.png' and 'roc_curves_split.png'.")
+    
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.3f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(f'ROC Curve - {name}')
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+    
+    # Generate a clean filename for each plot
+    clean_name = name.replace(" ", "_").replace("(", "").replace(")", "").replace("=", "")
+    filename = f'roc_curve_{clean_name}.png'
+    plt.savefig(filename)
+    plt.show()
+    print(f"Saved: {filename}")
